@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useThemeStore } from '../stores/useThemeStore'
@@ -338,9 +338,63 @@ List ALL education levels where GPA, CGPA, or academic grades are calculated for
     }
   }, [levelsQ.data, level, setLevel])
 
-  // 2. Universities/Institutions/Boards List Scraper
-  const universitiesQ = useQuery({
-    queryKey: ['universities', country, level, debouncedUniQuery],
+  // 2. Universities/Institutions/Boards List Scraper - Base Query
+  const universitiesBaseQ = useQuery({
+    queryKey: ['universities-base', country, level],
+    queryFn: async () => {
+      try {
+        const res = await fetch('/api/universities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ country, level, search: '' })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) return data;
+        }
+        if (res.status === 429) {
+          const errData = await res.json().catch(() => ({}));
+          throw { status: 429, message: errData.error || 'Rate limited', resetTime: errData.resetTime || '30s', errorId: Date.now() };
+        }
+      } catch (serverErr: any) {
+        if (serverErr?.status === 429) throw serverErr;
+        console.warn('[universities-base] Server route unavailable, using direct AI...', serverErr?.message);
+      }
+
+      const lvl = level.toLowerCase();
+      const isSchoolLevel = lvl.includes('ssc') || lvl.includes('hsc') || lvl.includes('school') || lvl.includes('secondary') || lvl.includes('intermediate') || lvl.includes('high school') || lvl.includes('board') || lvl.includes('madrasha');
+      if (isSchoolLevel) {
+        return [{ name: "Unified Board / National Grading System", city: "National", type: "national", ranking: "Unified" }];
+      }
+
+      const institutionLabel = lvl.includes('college') ? 'colleges' : lvl.includes('diploma') || lvl.includes('polytechnic') ? 'polytechnic institutes' : 'universities';
+      const systemPrompt = `You are a strict academic database.
+LANGUAGE RULE: You MUST respond entirely in English. All institution names, city names, and text must be in English only. Do not use local language scripts (Arabic, Bengali, Chinese, etc.).
+Return a JSON object with the top 100 real ${institutionLabel} for the requested country and level. Format: { "universities": [{ "name": "...", "city": "...", "type": "public", "ranking": "..." }] }. CRITICAL: Return only real institution names.`;
+      const result = await callAIWithFallback(systemPrompt, `Country: ${country}, Level: ${level}`);
+      return result.universities || result.institutions || result.colleges || [];
+    },
+    enabled: !!country && country !== 'Manual Mode' && !!level && calcMode === 'ai',
+    retry: false
+  });
+
+  // Local filtering logic: checks if search term matches any item in the pre-loaded base list
+  const localFilteredUnis = useMemo(() => {
+    const baseList = universitiesBaseQ.data || [];
+    if (!uniQuery.trim()) return baseList;
+    const searchWord = uniQuery.toLowerCase().trim();
+    return baseList.filter((u: any) => 
+      u.name.toLowerCase().includes(searchWord) || 
+      (u.city && u.city.toLowerCase().includes(searchWord))
+    );
+  }, [universitiesBaseQ.data, uniQuery]);
+
+  // Determine if we actually need to search the web using AI
+  const shouldSearchAI = !!uniQuery.trim() && localFilteredUnis.length === 0;
+
+  // 2b. Secondary Query for Search when not found in local cache
+  const universitiesSearchQ = useQuery({
+    queryKey: ['universities-search', country, level, debouncedUniQuery],
     queryFn: async () => {
       try {
         const res = await fetch('/api/universities', {
@@ -358,25 +412,36 @@ List ALL education levels where GPA, CGPA, or academic grades are calculated for
         }
       } catch (serverErr: any) {
         if (serverErr?.status === 429) throw serverErr;
-        console.warn('[universities] Server route unavailable, using direct AI...', serverErr?.message);
+        console.warn('[universities-search] Server route unavailable, using direct AI...', serverErr?.message);
       }
 
-      const lvl = level.toLowerCase();
-      const isSchoolLevel = lvl.includes('ssc') || lvl.includes('hsc') || lvl.includes('school') || lvl.includes('secondary') || lvl.includes('intermediate') || lvl.includes('high school') || lvl.includes('board') || lvl.includes('madrasha');
-      if (isSchoolLevel) {
-        return [{ name: "Unified Board / National Grading System", city: "National", type: "national", ranking: "Unified" }];
-      }
-
-      const institutionLabel = lvl.includes('college') ? 'colleges' : lvl.includes('diploma') || lvl.includes('polytechnic') ? 'polytechnic institutes' : 'universities';
       const systemPrompt = `You are a strict academic database.
-LANGUAGE RULE: You MUST respond entirely in English. All institution names, city names, and text must be in English only. Do not use local language scripts (Arabic, Bengali, Chinese, etc.).
-${debouncedUniQuery ? `List up to 15 universities/institutions in ${country} matching or highly related to the search query "${debouncedUniQuery}".` : `Return a JSON object with the top 100 real ${institutionLabel} for the requested country and level.`} Format: { "universities": [{ "name": "...", "city": "...", "type": "public", "ranking": "..." }] }. CRITICAL: Return only real institution names.`;
-      const result = await callAIWithFallback(systemPrompt, debouncedUniQuery ? `List universities matching "${debouncedUniQuery}" in ${country}` : `Country: ${country}, Level: ${level}`);
+LANGUAGE RULE: You MUST respond entirely in English. All institution names, city names, and text must be in English only. Do not use local language scripts.
+List up to 15 universities/institutions in ${country} matching or highly related to the search query "${debouncedUniQuery}". Format: { "universities": [{ "name": "...", "city": "...", "type": "public", "ranking": "..." }] }.`;
+      const result = await callAIWithFallback(systemPrompt, `List universities matching "${debouncedUniQuery}" in ${country}`);
       return result.universities || result.institutions || result.colleges || [];
     },
-    enabled: !!country && country !== 'Manual Mode' && !!level && calcMode === 'ai',
+    enabled: !!country && country !== 'Manual Mode' && !!level && shouldSearchAI && !!debouncedUniQuery && calcMode === 'ai',
     retry: false
   });
+
+  // Expose a unified universitiesQ object matching the old shape for rendering compatibility
+  const universitiesQ = useMemo(() => {
+    const listToDisplay = !uniQuery.trim()
+      ? (universitiesBaseQ.data || [])
+      : (localFilteredUnis.length > 0 ? localFilteredUnis : (universitiesSearchQ.data || []));
+
+    return {
+      data: listToDisplay,
+      isLoading: universitiesBaseQ.isLoading || (shouldSearchAI && universitiesSearchQ.isLoading),
+      isFetching: universitiesBaseQ.isFetching || (shouldSearchAI && universitiesSearchQ.isFetching),
+      error: universitiesBaseQ.error || (shouldSearchAI ? universitiesSearchQ.error : null),
+      refetch: () => {
+        universitiesBaseQ.refetch();
+        if (shouldSearchAI) universitiesSearchQ.refetch();
+      }
+    };
+  }, [universitiesBaseQ, universitiesSearchQ, localFilteredUnis, uniQuery, shouldSearchAI]);
 
   // 3. Official Grading Policy Scraper (with waiver_policy)
   const policyQ = useQuery({
@@ -442,11 +507,7 @@ Return the official grading policy for this institution in JSON format. MUST inc
     }
   }, [policyQ.data, calcMode])
 
-  useEffect(() => {
-    if (universitiesQ.data && universitiesQ.data.length === 1 && !university) {
-      setUniversity(universitiesQ.data[0])
-    }
-  }, [universitiesQ.data, university])
+
 
   const getResetTimeSecs = (timeStr: string): number => {
     if (!timeStr) return 25 // Default fallback

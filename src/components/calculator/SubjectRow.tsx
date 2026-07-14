@@ -120,7 +120,7 @@ export function SubjectRow({ subject, gradeMapping, inputMode, onUpdate, onRemov
       <td className="py-2 px-1.5 w-8">
         <motion.button
           onClick={onRemove}
-          className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-all"
+          className="opacity-100 lg:opacity-0 lg:group-hover:opacity-100 p-1 rounded-md text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-all"
           whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.85 }}
         >
           <i className="fa-solid fa-trash-can text-xs"></i>
