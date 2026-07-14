@@ -18,10 +18,13 @@ dotenv.config({ path: path.join(__dirname, '../.env') })
 
 // Built-in Groq API Keys list for failover rotation (Loaded from .env)
 const BUILTIN_GROQ_KEYS = [
-  process.env.VITE_GROQ_API_KEY_1,
-  process.env.VITE_GROQ_API_KEY_2,
-  process.env.VITE_GROQ_API_KEY,
-  process.env.GROQ_API_KEY_2
+  process.env.VITE_GROQ_API_KEY_1 || process.env.GROQ_API_KEY_1,
+  process.env.VITE_GROQ_API_KEY_2 || process.env.GROQ_API_KEY_2,
+  process.env.VITE_GROQ_API_KEY_3 || process.env.GROQ_API_KEY_3,
+  process.env.VITE_GROQ_API_KEY_4 || process.env.GROQ_API_KEY_4,
+  process.env.VITE_GROQ_API_KEY_5 || process.env.GROQ_API_KEY_5,
+  process.env.VITE_GROQ_API_KEY_6 || process.env.GROQ_API_KEY_6,
+  process.env.VITE_GROQ_API_KEY || process.env.GROQ_API_KEY
 ].filter(Boolean)
 
 // Configure Nodemailer for feedback email delivery
@@ -197,6 +200,45 @@ async function queryGroq(prompt, systemInstruction, apiKey, modelName) {
   return JSON.parse(response.data.choices[0].message.content)
 }
 
+let lastAlertSentTime = 0
+async function sendAPIKeyAlertEmail(errorMsg) {
+  const now = Date.now()
+  if (now - lastAlertSentTime < 10 * 60 * 1000) return
+  lastAlertSentTime = now
+
+  const smtpUser = process.env.SMTP_USER || ''
+  const smtpPass = process.env.SMTP_PASS || ''
+
+  if (smtpUser && smtpPass) {
+    const mailOptions = {
+      from: `"GPA Calculator Monitor" <${smtpUser}>`,
+      to: 'sakibshourov001@gmail.com',
+      subject: `🚨 ALERT: All Groq API Keys Have Failed / Expired`,
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; border-radius: 12px; background-color: #0f172a; color: #f8fafc; border: 1px solid #ef4444;">
+          <h2 style="color: #f87171; margin-top: 0;">🚨 API Failover Alert</h2>
+          <hr style="border: 0; border-top: 1px solid #ef4444; margin-bottom: 20px;" />
+          <p>This is a warning that all configured Groq API keys have failed on your GPA Calculator backend.</p>
+          <p><strong>System Status:</strong> Fallback Mode active</p>
+          <p><strong>Last Error Message Details:</strong></p>
+          <blockquote style="background: #1e293b; padding: 12px 16px; border-left: 4px solid #ef4444; border-radius: 6px; margin: 10px 0; color: #fca5a5;">
+            ${errorMsg}
+          </blockquote>
+          <p>Please update your keys in the Vercel/Render dashboard or local <code>.env</code> file immediately to restore AI functionality.</p>
+          <hr style="border: 0; border-top: 1px solid #334155; margin-top: 20px;" />
+          <p style="font-size: 10px; color: #64748b;">GPA Calculator Automated System Monitor.</p>
+        </div>
+      `
+    }
+    try {
+      await transporter.sendMail(mailOptions)
+      console.log(`[Alert Email] Alert email sent successfully to sakibshourov001@gmail.com`)
+    } catch (mailErr) {
+      console.error(`[Alert Email Error] Failed to send alert:`, mailErr.message)
+    }
+  }
+}
+
 async function queryGroqWithFailover(prompt, systemInstruction, modelName) {
   const keys = [...new Set(BUILTIN_GROQ_KEYS.filter(Boolean))]
 
@@ -224,6 +266,10 @@ async function queryGroqWithFailover(prompt, systemInstruction, modelName) {
     }
   }
 
+  const finalMsg = lastError ? lastError.message : 'Unknown rate limit/expiry'
+  // Proactively dispatch alert email
+  sendAPIKeyAlertEmail(finalMsg).catch(() => {})
+
   if (rateLimitResetTime) {
     throw {
       status: 429,
@@ -232,7 +278,7 @@ async function queryGroqWithFailover(prompt, systemInstruction, modelName) {
     }
   }
 
-  throw new Error(`All configured Groq API keys failed. Last error: ${lastError ? lastError.message : 'Unknown'}`)
+  throw new Error(`All configured Groq API keys failed. Last error: ${finalMsg}`)
 }
 
 // Helper: Normalize LLM response. Extracts flat arrays from wrapper objects if needed.
