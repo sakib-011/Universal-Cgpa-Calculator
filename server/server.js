@@ -967,8 +967,7 @@ app.post('/api/feedback', async (req, res) => {
   }
 
   try {
-    // 1. Save locally to feedback.json
-    const feedbackList = JSON.parse(fs.readFileSync(FEEDBACK_FILE, 'utf8'))
+    // 1. Save locally to feedback.json (with safe catch for read-only serverless filesystems)
     const newFeedback = {
       id: Date.now().toString(),
       name: name || 'Anonymous Student',
@@ -978,8 +977,16 @@ app.post('/api/feedback', async (req, res) => {
       timestamp: new Date().toISOString()
     }
 
-    feedbackList.push(newFeedback)
-    fs.writeFileSync(FEEDBACK_FILE, JSON.stringify(feedbackList, null, 2))
+    try {
+      let feedbackList = []
+      if (fs.existsSync(FEEDBACK_FILE)) {
+        feedbackList = JSON.parse(fs.readFileSync(FEEDBACK_FILE, 'utf8'))
+      }
+      feedbackList.push(newFeedback)
+      fs.writeFileSync(FEEDBACK_FILE, JSON.stringify(feedbackList, null, 2))
+    } catch (fsErr) {
+      console.warn('[Feedback FS Warning] Read-only filesystem, skipped local save:', fsErr.message)
+    }
     
     // 2. Send email notification to sakibshourov001@gmail.com
     const smtpUser = process.env.SMTP_USER || ''
@@ -1028,14 +1035,22 @@ app.post('/api/feedback', async (req, res) => {
  */
 app.get('/api/feedback', (req, res) => {
   try {
-    const feedbackList = JSON.parse(fs.readFileSync(FEEDBACK_FILE, 'utf8'))
-    res.json(feedbackList)
+    if (fs.existsSync(FEEDBACK_FILE)) {
+      const feedbackList = JSON.parse(fs.readFileSync(FEEDBACK_FILE, 'utf8'))
+      return res.json(feedbackList)
+    }
+    res.json([])
   } catch (error) {
-    res.status(500).json({ error: 'Failed to retrieve feedback' })
+    res.json([])
   }
 })
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 GPA Calculator Backend running at http://localhost:${PORT}`)
-})
+// Export app for serverless deployments (Vercel)
+export default app
+
+// Start server locally only when not in serverless runtime
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 GPA Calculator Backend running at http://localhost:${PORT}`)
+  })
+}
