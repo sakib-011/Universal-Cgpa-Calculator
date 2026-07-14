@@ -178,17 +178,23 @@ async function queryGemini(prompt, systemInstruction, apiKey, modelName) {
  * Groq API Handler (OpenAI compatible)
  */
 async function queryGroq(prompt, systemInstruction, apiKey, modelName) {
-  let model = modelName || 'llama-3.3-70b-versatile'
+  let model = modelName || 'llama-3.1-8b-instant'
   if (model === 'llama-3.3-70b-specdec') {
-    model = 'llama-3.3-70b-versatile'
+    model = 'llama-3.1-8b-instant'
   }
   const url = 'https://api.groq.com/openai/v1/chat/completions'
   
+  let finalPrompt = prompt
+  let finalSystem = systemInstruction || ''
+  if (!finalPrompt.toLowerCase().includes('json') && !finalSystem.toLowerCase().includes('json')) {
+    finalPrompt += '\nReturn the response in valid json format.'
+  }
+
   const response = await axios.post(url, {
     model,
     messages: [
-      { role: 'system', content: systemInstruction },
-      { role: 'user', content: prompt }
+      { role: 'system', content: finalSystem },
+      { role: 'user', content: finalPrompt }
     ],
     response_format: { type: 'json_object' },
     temperature: 0.1
@@ -241,6 +247,9 @@ async function sendAPIKeyAlertEmail(errorMsg) {
 
 async function queryGroqWithFailover(prompt, systemInstruction, modelName) {
   const keys = [...new Set(BUILTIN_GROQ_KEYS.filter(Boolean))]
+  if (keys.length === 0) {
+    throw new Error('API Keys Not Configured: Please add GROQ_API_KEY_1 to 6 in your Vercel Environment Variables Settings.')
+  }
 
   let rateLimitResetTime = null
   let lastError = null
@@ -356,7 +365,7 @@ async function queryClaude(prompt, systemInstruction, apiKey, modelName) {
 app.post('/api/levels', async (req, res) => {
   const country = req.body.country
   const provider = req.body.provider || 'groq'
-  const model = req.body.model || 'llama-3.3-70b-versatile'
+  const model = req.body.model || 'llama-3.1-8b-instant'
   const apiKey = req.body.apiKey
 
   const systemInstruction = `
@@ -387,9 +396,6 @@ Example: ["SSC", "HSC", "Honours", "Masters"]
     res.json(extractArray(result))
   } catch (error) {
     console.error('[Error /api/levels]', error.message)
-    if (error.status === 429) {
-      return res.status(429).json({ error: error.message, resetTime: error.resetTime })
-    }
     // Return country-specific levels fallback
     const c = (country || 'Bangladesh').toLowerCase()
     if (c.includes('bangladesh')) {
@@ -412,7 +418,7 @@ app.post('/api/universities', async (req, res) => {
   const level = req.body.level
   const search = req.body.search || ''
   const provider = req.body.provider || 'groq'
-  const model = req.body.model || 'llama-3.3-70b-versatile'
+  const model = req.body.model || 'llama-3.1-8b-instant'
   const apiKey = req.body.apiKey
 
   // Bypass university selection for school-level boards (SSC, HSC, High School, etc.)
@@ -455,9 +461,6 @@ The "type" field must be one of: "public", "private", "national", "international
     res.json(extractArray(result))
   } catch (error) {
     console.error('[Error /api/universities]', error.message)
-    if (error.status === 429) {
-      return res.status(429).json({ error: error.message, resetTime: error.resetTime })
-    }
     // Send country-specific fallback response
     const c = (country || 'Bangladesh').toLowerCase()
     if (c.includes('bangladesh')) {
@@ -878,7 +881,7 @@ app.post('/api/policy', async (req, res) => {
   const country = req.body.country
   const level = req.body.level
   const provider = req.body.provider || 'groq'
-  const model = req.body.model || 'llama-3.3-70b-versatile'
+  const model = req.body.model || 'llama-3.1-8b-instant'
   const apiKey = req.body.apiKey
 
   try {
@@ -970,9 +973,6 @@ Important details:
     res.json(result)
   } catch (error) {
     console.error('[Error /api/policy]', error.message)
-    if (error.status === 429) {
-      return res.status(429).json({ error: error.message, resetTime: error.resetTime })
-    }
     // Return country-specific fallback policy
     res.json(getFallbackPolicy(country, university, level))
   }
@@ -988,7 +988,7 @@ app.post('/api/ai', async (req, res) => {
     return res.status(400).json({ error: 'systemPrompt and userPrompt are required' })
   }
   try {
-    const result = await queryGroqWithFailover(userPrompt, systemPrompt, 'llama-3.3-70b-versatile')
+    const result = await queryGroqWithFailover(userPrompt, systemPrompt, 'llama-3.1-8b-instant')
     res.json(result)
   } catch (error) {
     console.error('[Error /api/ai]', error?.message || error)
