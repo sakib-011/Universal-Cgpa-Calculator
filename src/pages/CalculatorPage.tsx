@@ -622,7 +622,7 @@ Return the official grading policy for this institution in JSON format. MUST inc
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <motion.button
             onClick={() => { reset(); navigate('/') }}
             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm border transition-all ${
@@ -640,10 +640,10 @@ Return the official grading policy for this institution in JSON format. MUST inc
       </div>
 
       <div className="flex justify-center">
-        <div className={`flex rounded-2xl p-1 gap-1 border ${isDark ? 'bg-white/5 border-white/10' : 'bg-slate-100 border-slate-200'}`}>
+        <div className={`flex w-full max-w-sm sm:w-auto rounded-2xl p-1 gap-1 border ${isDark ? 'bg-white/5 border-white/10' : 'bg-slate-100 border-slate-200'}`}>
           <button
             onClick={() => handleModeSwitch('ai')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
               calcMode === 'ai' ? 'bg-violet-600 text-white shadow-md' : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -651,11 +651,11 @@ Return the official grading policy for this institution in JSON format. MUST inc
           </button>
           <button
             onClick={() => handleModeSwitch('manual')}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 sm:px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
               calcMode === 'manual' ? 'bg-violet-600 text-white shadow-md' : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <i className="fa-solid fa-calculator text-[10px]"></i> Standard / Manual Mode
+            <i className="fa-solid fa-calculator text-[10px]"></i> Standard Mode
           </button>
         </div>
       </div>
@@ -855,7 +855,7 @@ Return the official grading policy for this institution in JSON format. MUST inc
 
             {country && country !== 'Manual Mode' && (
               <>
-                <motion.div className={`rounded-3xl border p-5 flex items-center justify-between gap-4 ${cardBg}`} initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+                <motion.div className={`rounded-3xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${cardBg}`} initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
                   <div className="flex items-center gap-3">
                     <span className="text-4xl">{getCountryFlag(countryCode)}</span>
                     <div>
@@ -863,7 +863,7 @@ Return the official grading policy for this institution in JSON format. MUST inc
                       <p className="text-xs text-slate-500">AI Auto-Scraper handles university data structures</p>
                     </div>
                   </div>
-                  <button onClick={reset} className={`px-3 py-1.5 rounded-xl text-xs font-bold border ${isDark ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-600'}`}>
+                  <button onClick={reset} className={`w-full sm:w-auto px-3 py-1.5 rounded-xl text-xs font-bold border text-center transition-all ${isDark ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-600'}`}>
                     Change Country
                   </button>
                 </motion.div>
